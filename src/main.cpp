@@ -2,6 +2,8 @@
 #include <GL/glu.h>
 #include <GL/glut.h>
 
+static int g_window_id;
+
 int main(int argc, char *argv[])
 {
     constexpr int window_width = 1366;
@@ -16,7 +18,7 @@ int main(int argc, char *argv[])
         (glutGet(GLUT_SCREEN_WIDTH)  - window_width)  / 2,
         (glutGet(GLUT_SCREEN_HEIGHT) - window_height) / 2);
 
-    glutCreateWindow("OpenGL Elephant");
+    g_window_id = glutCreateWindow("OpenGL Elephant");
 
     glutMainLoop();
 

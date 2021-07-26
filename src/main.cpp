@@ -1,5 +1,5 @@
+#include <unordered_map>
 #include <vector>
-#include <array>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -31,20 +31,35 @@ struct Camera {
 };
 
 static int g_window_id;
-static Camera camera = { { 3, 10, 20 }, { 0, 0, 0 } };
+static Camera camera = { { 0, 10, 20 }, { 0, 0, 0 } };
 static GLfloat up[3] = { 0.0f, 1.0f, 0.0f };
 
 static GLfloat ambient_intensity = 0.2f;
 
+struct Face
+{
+    size_t material_index;
+    std::vector<std::pair<vec3, vec3>> vertices;
+};
+
 struct Object
 {
     vec3 pos;
-    std::vector<std::vector<vec3>> faces;
+    std::vector<Face> faces;
 };
 
-Object tree;
+std::vector<Object> objects;
 
-void load_obj(const char *filename, std::vector<std::vector<vec3>> &faces)
+struct Material
+{
+    float shininess;
+    vec3 ambience;
+    vec3 diffuse;
+    vec3 specular;
+    vec3 emission;
+};
+
+std::unordered_map<std::string, Material> load_mtl(const std::string &filename)
 {
     std::ifstream in(filename, std::ios::in);
     if (!in)
@@ -53,12 +68,80 @@ void load_obj(const char *filename, std::vector<std::vector<vec3>> &faces)
         exit(1);
     }
 
-    std::vector<vec3> vertices;
+    std::unordered_map<std::string, Material> materials;
+    std::string current_mat;
 
     std::string line;
     while (std::getline(in, line))
     {
-        if (line.substr(0, 2) == "v ")
+        if (line.substr(0, 7) == "newmtl ")
+        {
+            current_mat = line.substr(7);
+        }
+        else if (line.substr(0, 3) == "Ns ")
+        {
+            std::istringstream ss(line.substr(3));
+            ss >> materials[current_mat].shininess;
+        }
+        else if (line.substr(0, 3) == "Ka ")
+        {
+            std::istringstream ss(line.substr(3));
+            ss >> materials[current_mat].ambience.x;
+            ss >> materials[current_mat].ambience.y;
+            ss >> materials[current_mat].ambience.z;
+        }
+        else if (line.substr(0, 3) == "Kd ")
+        {
+            std::istringstream ss(line.substr(3));
+            ss >> materials[current_mat].diffuse.x;
+            ss >> materials[current_mat].diffuse.y;
+            ss >> materials[current_mat].diffuse.z;
+        }
+        else if (line.substr(0, 3) == "Ks ")
+        {
+            std::istringstream ss(line.substr(3));
+            ss >> materials[current_mat].specular.x;
+            ss >> materials[current_mat].specular.y;
+            ss >> materials[current_mat].specular.z;
+        }
+        else if (line.substr(0, 3) == "Ke ")
+        {
+            std::istringstream ss(line.substr(3));
+            ss >> materials[current_mat].emission.x;
+            ss >> materials[current_mat].emission.y;
+            ss >> materials[current_mat].emission.z;
+        }
+    }
+
+    return materials;
+}
+
+Object load_obj(vec3 pos, const std::string &filename)
+{
+    std::ifstream in(filename, std::ios::in);
+    if (!in)
+    {
+        std::cerr << "Cannot open " << filename << std::endl;
+        exit(1);
+    }
+
+    std::unordered_map<std::string, Material> materials;
+    Object obj;
+    obj.pos = pos;
+
+    std::vector<vec3> vertices;
+    std::vector<vec3> normals;
+
+    std::string line;
+    while (std::getline(in, line))
+    {
+        if (line.substr(0, 7) == "mtllib ")
+        {
+            std::string mtl_path = line.substr(7);
+            std::string dir_name = filename.substr(0, filename.find_last_of("\\/"));
+            materials = load_mtl(dir_name + "/" + mtl_path);
+        }
+        else if (line.substr(0, 2) == "v ")
         {
             std::istringstream s(line.substr(2));
             vec3 v;
@@ -67,24 +150,38 @@ void load_obj(const char *filename, std::vector<std::vector<vec3>> &faces)
             s >> v.z;
             vertices.push_back(v);
         }
+        else if (line.substr(0, 3) == "vn ")
+        {
+            std::istringstream s(line.substr(3));
+            vec3 v;
+            s >> v.x;
+            s >> v.y;
+            s >> v.z;
+            normals.push_back(v);
+        }
         else if (line.substr(0, 2) == "f ")
         {
             std::istringstream ss(line.substr(2));
             std::string token;
-            std::vector<vec3> face;
+            Face face;
 
-            while(std::getline(ss, token, ' '))
+            while (std::getline(ss, token, ' '))
             {
                 std::istringstream ss2(token);
-                int a, b, c;
-                ss2 >> a; ss2 >> b; ss2 >> c;
+                int v_id, vn_id;
+                ss2 >> v_id;
+                ss2.ignore();
+                ss2.ignore();
+                ss2 >> vn_id;
 
-                face.push_back(vertices[a - 1]);
+                face.vertices.push_back({ vertices[v_id - 1], normals[vn_id - 1] });
             }
 
-            faces.push_back(face);
+            obj.faces.push_back(face);
         }
     }
+
+    return obj;
 }
 
 static void draw_floor()
@@ -131,7 +228,7 @@ static void draw_floor()
 	glPopMatrix();
 }
 
-static void draw_bush()
+static void draw_object(Object& obj)
 {
 	glPushMatrix();
 	glNormal3d(0, 1, 0);
@@ -139,15 +236,21 @@ static void draw_bush()
     GLfloat color1[4] = { 0.318f, 0.212f, 0.102f, 1.0f };
 	GLfloat color2[4] = { 1.0f, 1.0f, 0.6f, 1.0f };
 
-    glScalef(4.0f, 1.0f, 4.0f);
-    for (size_t i = 0; i < tree.faces.size(); i++)
+    glTranslatef(obj.pos.x, obj.pos.y, obj.pos.z);
+    // glScalef(4.0f, 1.0f, 4.0f);
+    for (size_t i = 0; i < obj.faces.size(); i++)
     {
         glBegin(GL_POLYGON);
 	    glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, (i < 6) ? color1 : color2);
-        for (size_t j = 0; j < tree.faces[i].size(); j++)
+
+        const auto& face = obj.faces[i];
+        for (size_t j = 0; j < face.vertices.size(); j++)
         {
-            // std::cerr << tree.faces[i][j].x << ", " << tree.faces[i][j].y << ", " << tree.faces[i][j].z << "\n";
-            glVertex3f(tree.faces[i][j].x, tree.faces[i][j].y, tree.faces[i][j].z);
+            const vec3 vertex = face.vertices[j].first;
+            const vec3 normal = face.vertices[j].second;
+
+            glNormal3f(normal.x, normal.y, normal.z);
+            glVertex3f(vertex.x, vertex.y, vertex.z);
         }
 	    glEnd();
     }
@@ -187,7 +290,8 @@ static void on_display()
 
     draw_floor();
 
-    draw_bush();
+    for (Object &obj : objects)
+        draw_object(obj);
 
     glFlush();
     glutSwapBuffers();
@@ -236,9 +340,18 @@ int main(int argc, char *argv[])
         (glutGet(GLUT_SCREEN_HEIGHT) - WINDOW_HEIGHT) / 2);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    load_obj("/home/guy/projects/opengl-elephant/Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_Stump_002.obj",
-             tree.faces);
-    tree.pos = { 0, 0, 0 };
+    objects.push_back(load_obj({-8, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Bush_001.obj"));
+    objects.push_back(load_obj({-6, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Bush_002.obj"));
+    objects.push_back(load_obj({ 0, 0, 10}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Grass_001.obj"));
+    objects.push_back(load_obj({ 0, 0, 7}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Grass_002.obj"));
+    objects.push_back(load_obj({ 6, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_Stump_001.obj"));
+    objects.push_back(load_obj({ 8, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_Stump_002.obj"));
+    objects.push_back(load_obj({-8, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_001.obj"));
+    objects.push_back(load_obj({-5, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_002.obj"));
+    objects.push_back(load_obj({-2, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_003.obj"));
+    objects.push_back(load_obj({ 1, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_004.obj"));
+    objects.push_back(load_obj({ 4, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_005.obj"));
+    objects.push_back(load_obj({ 7, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_006.obj"));
 
     g_window_id = glutCreateWindow("OpenGL Elephant");
     glutDisplayFunc(on_display);

@@ -34,7 +34,7 @@ static int g_window_id;
 static Camera camera = { { 0, 10, 20 }, { 0, 0, 0 } };
 static GLfloat up[3] = { 0.0f, 1.0f, 0.0f };
 
-static GLfloat ambient_intensity = 0.2f;
+static GLfloat ambient_intensity = 1.0f;
 
 struct Material
 {
@@ -54,6 +54,7 @@ struct Face
 struct Object
 {
     vec3 pos;
+    vec3 scale;
     std::vector<Face> faces;
 };
 
@@ -130,6 +131,7 @@ Object load_obj(vec3 pos, const std::string &filename)
 
     Object obj;
     obj.pos = pos;
+    obj.scale = { 1.0f, 1.0f, 1.0f };
 
     std::vector<vec3> vertices;
     std::vector<vec3> normals;
@@ -187,53 +189,28 @@ Object load_obj(vec3 pos, const std::string &filename)
 
             obj.faces.push_back(face);
         }
+        else if (line.substr(0, 2) == "l ")
+        {
+            std::istringstream ss(line.substr(2));
+            std::string token;
+            Face face;
+
+            face.material = materials[current_mat];
+
+            while (std::getline(ss, token, ' '))
+            {
+                std::istringstream ss2(token);
+                int v_id;
+                ss2 >> v_id;
+
+                face.vertices.push_back({ vertices[v_id - 1], {} });
+            }
+
+            obj.faces.push_back(face);
+        }
     }
 
     return obj;
-}
-
-static void draw_floor()
-{
-    GLfloat color1[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
-	GLfloat color2[4] = { 0.7f, 0.7f, 0.7f, 1.0f };
-
-    int columns = 10;
-    int rows = 10;
-    int xMin = -10;
-    int xMax = 10;
-    int yMin = -10;
-    int yMax = 10;
-
-	glPushMatrix();
-	glNormal3d(0, 1, 0);
-
-	float width = xMax - xMin;
-	float height = yMax - yMin;
-	float row_step = height / (float)columns; // calc rows height
-	float column_step = width / (float)columns; // calc column width
-
-	GLfloat specular[] = { 1.0f, 1.0f, 1.0f };
-	GLfloat shininess = 128.0f;
-	glMaterialfv(GL_FRONT, GL_SPECULAR, specular);
-	glMaterialf(GL_FRONT, GL_SHININESS, shininess); // make the floor shiny
-
-	glBegin(GL_QUADS);
-		// for each row
-		for (int row = 0; row < rows; row++)
-		{
-			// for each column
-			for (int column = 0; column < columns; column++)
-			{
-				glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, (row + column) % 2 == 0 ? color1 : color2); // choose color
-				glVertex3f(xMin + column * column_step, 0, yMin + row * row_step);
-				glVertex3f(xMin + (column + 1) * column_step, 0, yMin + row * row_step);
-				glVertex3f(xMin + (column + 1) * column_step, 0, yMin + (row + 1) * row_step);
-				glVertex3f(xMin + column * column_step, 0, yMin + (row + 1) * row_step);
-			}
-		}
-	glEnd();
-
-	glPopMatrix();
 }
 
 static void draw_object(Object& obj)
@@ -242,7 +219,7 @@ static void draw_object(Object& obj)
 	glNormal3d(0, 1, 0);
 
     glTranslatef(obj.pos.x, obj.pos.y, obj.pos.z);
-    // glScalef(4.0f, 1.0f, 4.0f);
+    glScalef(obj.scale.x, obj.scale.y, obj.scale.z);
     for (size_t i = 0; i < obj.faces.size(); i++)
     {
         glBegin(GL_POLYGON);
@@ -290,7 +267,7 @@ static void on_display()
     glEnable(GL_TEXTURE_2D);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 	glEnable(GL_DEPTH_TEST);
-	glShadeModel(GL_SMOOTH);
+	glShadeModel(GL_FLAT);
 	glEnable(GL_NORMALIZE);
 	glEnable(GL_LIGHTING);
 
@@ -298,8 +275,8 @@ static void on_display()
         glEnable(GL_LIGHT0);
         int id = GL_LIGHT0;
         float color[3] = { 1.0f, 1.0f, 1.0f };
-        float position[3] = { 0.0f, 15.0f, 0.0f };
-        float target[3] = { 0.0f, 0.0f, 0.0f };
+        float position[3] = { 7.0f, 0.0f, 3.0f };
+        float target[3] = { 0.0f, 1.0f, 0.0f };
         glLightfv(id, GL_DIFFUSE, color);
         glLightfv(id, GL_SPECULAR, color);
         glLightfv(id, GL_POSITION, position);
@@ -314,8 +291,6 @@ static void on_display()
     GLfloat globalAmbientVec[4] = { ambient_intensity , ambient_intensity, ambient_intensity, 1.0f };
 	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbientVec);
 	glLoadIdentity();
-
-    draw_floor();
 
     for (Object &obj : objects)
         draw_object(obj);
@@ -367,18 +342,24 @@ int main(int argc, char *argv[])
         (glutGet(GLUT_SCREEN_HEIGHT) - WINDOW_HEIGHT) / 2);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    objects.push_back(load_obj({-8, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Bush_001.obj"));
-    objects.push_back(load_obj({-6, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Bush_002.obj"));
-    objects.push_back(load_obj({ 0, 0, 9}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Grass_001.obj"));
-    objects.push_back(load_obj({ 0, 0, 7}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Grass_002.obj"));
-    objects.push_back(load_obj({ 6, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_Stump_001.obj"));
-    objects.push_back(load_obj({ 8, 0, 5}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_Stump_002.obj"));
-    objects.push_back(load_obj({-8, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_001.obj"));
-    objects.push_back(load_obj({-5, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_002.obj"));
-    objects.push_back(load_obj({-2, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_003.obj"));
-    objects.push_back(load_obj({ 1, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_004.obj"));
-    objects.push_back(load_obj({ 4, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_005.obj"));
-    objects.push_back(load_obj({ 7, 0, 0}, "../Low_Poly_Foliage_Pack_001/OBJ Files/Low_Poly_Tree_006.obj"));
+    objects.push_back(load_obj({0, 0, 0}, "../models/Floor.obj"));
+    objects[0].scale = { 1000.0f, 0.0f, 1000.0f };
+
+    objects.push_back(load_obj({7, 0, 3}, "../models/Low Poly Elephant.obj"));
+    objects[1].scale = { 4.0f, 4.0f, 4.0f };
+
+    objects.push_back(load_obj({-8, 0, 5}, "../models/Low_Poly_Bush_001.obj"));
+    objects.push_back(load_obj({-6, 0, 5}, "../models/Low_Poly_Bush_002.obj"));
+    objects.push_back(load_obj({ 0, 0, 9}, "../models/Low_Poly_Grass_001.obj"));
+    objects.push_back(load_obj({ 0, 0, 7}, "../models/Low_Poly_Grass_002.obj"));
+    objects.push_back(load_obj({ 6, 0, 5}, "../models/Low_Poly_Tree_Stump_001.obj"));
+    objects.push_back(load_obj({ 8, 0, 5}, "../models/Low_Poly_Tree_Stump_002.obj"));
+    objects.push_back(load_obj({-8, 0, 0}, "../models/Low_Poly_Tree_001.obj"));
+    objects.push_back(load_obj({-5, 0, 0}, "../models/Low_Poly_Tree_002.obj"));
+    objects.push_back(load_obj({-2, 0, 0}, "../models/Low_Poly_Tree_003.obj"));
+    objects.push_back(load_obj({ 1, 0, 0}, "../models/Low_Poly_Tree_004.obj"));
+    objects.push_back(load_obj({ 4, 0, 0}, "../models/Low_Poly_Tree_005.obj"));
+    objects.push_back(load_obj({ 7, 0, 0}, "../models/Low_Poly_Tree_006.obj"));
 
     g_window_id = glutCreateWindow("OpenGL Elephant");
     glutDisplayFunc(on_display);

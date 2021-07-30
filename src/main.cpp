@@ -1,9 +1,10 @@
-#include <unordered_map>
+#include <cmath>
 #include <vector>
-#include <iostream>
+#include <random>
+#include <unordered_map>
 #include <fstream>
 #include <sstream>
-#include <cmath>
+#include <iostream>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
@@ -11,6 +12,9 @@
 
 #define WINDOW_WIDTH 1366
 #define WINDOW_HEIGHT 768
+
+#define FOREST_SIZE 100
+#define FOREST_AREA (FOREST_SIZE * FOREST_SIZE)
 
 struct Material
 {
@@ -31,7 +35,7 @@ struct Object
 {
     glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
     float yaw = -90.0f;
-    float pitch = 0.0f;
+    float pitch = -90.0f;
     glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
     std::vector<Face> faces = {};
     float speed = 1.0f;
@@ -47,7 +51,7 @@ struct Light : public Object
 
 };
 
-static Camera camera = { { { 0, 10, 20 } } };
+static Camera camera = { { { 0, 40, 0 } } };
 static glm::vec3 up = { 0.0f, 1.0f, 0.0f };
 
 static int g_window_id;
@@ -386,6 +390,67 @@ static void on_timer(int)
     glutTimerFunc(40, on_timer, 0);
 }
 
+void setup_map_spawn(std::mt19937& rng, size_t amount, const std::vector<std::string> &kinds)
+{
+    std::uniform_real_distribution<float> location_dis(-FOREST_SIZE, FOREST_SIZE);
+    std::uniform_int_distribution<size_t> kind_dis(0, kinds.size() - 1);
+
+    for (size_t i = 0; i < amount; i++) {
+        float x = location_dis(rng);
+        float z = location_dis(rng);
+        size_t kind_index = kind_dis(rng);
+        const std::string &kind = kinds[kind_index];
+
+        objects.push_back(load_obj({ x, 0, z }, kind));
+    }
+
+}
+
+void setup_map()
+{
+    {
+        Object floor = load_obj({0, 0, 0}, "../models/Floor.obj");
+        floor.scale = { FOREST_SIZE, 0.0f, FOREST_SIZE };
+        objects.push_back(std::move(floor));
+    }
+
+    std::vector<std::string> tree_kinds = {
+        "../models/Low_Poly_Tree_001.obj",
+        "../models/Low_Poly_Tree_002.obj",
+        "../models/Low_Poly_Tree_003.obj",
+        "../models/Low_Poly_Tree_004.obj",
+        "../models/Low_Poly_Tree_005.obj",
+        "../models/Low_Poly_Tree_006.obj",
+    };
+
+    std::vector<std::string> stump_kinds = {
+        "../models/Low_Poly_Tree_Stump_001.obj",
+        "../models/Low_Poly_Tree_Stump_002.obj",
+    };
+
+    std::vector<std::string> bush_kinds = {
+        "../models/Low_Poly_Bush_001.obj",
+        "../models/Low_Poly_Bush_002.obj",
+    };
+
+    std::vector<std::string> grass_kinds = {
+        "../models/Low_Poly_Grass_001.obj",
+        "../models/Low_Poly_Grass_002.obj",
+    };
+
+    std::mt19937 rng(1337);
+    setup_map_spawn(rng, FOREST_AREA / 64, tree_kinds);
+    setup_map_spawn(rng, FOREST_AREA / 256, stump_kinds);
+    setup_map_spawn(rng, FOREST_AREA / 32, bush_kinds);
+    setup_map_spawn(rng, FOREST_AREA / 8, grass_kinds);
+
+    {
+        Object elephant = load_obj({0, 0, 0}, "../models/Low Poly Elephant.obj");
+        elephant.scale = { 4, 4, 4 };
+        objects.push_back(std::move(elephant));
+    }
+}
+
 int main(int argc, char *argv[])
 {
     glutInit(&argc, argv);
@@ -398,24 +463,7 @@ int main(int argc, char *argv[])
         (glutGet(GLUT_SCREEN_HEIGHT) - WINDOW_HEIGHT) / 2);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    objects.push_back(load_obj({0, 0, 0}, "../models/Floor.obj"));
-    objects[0].scale = { 1000.0f, 0.0f, 1000.0f };
-
-    objects.push_back(load_obj({7, 0, 3}, "../models/Low Poly Elephant.obj"));
-    objects[1].scale = { 4.0f, 4.0f, 4.0f };
-
-    objects.push_back(load_obj({-8, 0, 5}, "../models/Low_Poly_Bush_001.obj"));
-    objects.push_back(load_obj({-6, 0, 5}, "../models/Low_Poly_Bush_002.obj"));
-    objects.push_back(load_obj({ 0, 0, 9}, "../models/Low_Poly_Grass_001.obj"));
-    objects.push_back(load_obj({ 0, 0, 7}, "../models/Low_Poly_Grass_002.obj"));
-    objects.push_back(load_obj({ 6, 0, 5}, "../models/Low_Poly_Tree_Stump_001.obj"));
-    objects.push_back(load_obj({ 8, 0, 5}, "../models/Low_Poly_Tree_Stump_002.obj"));
-    objects.push_back(load_obj({-8, 0, 0}, "../models/Low_Poly_Tree_001.obj"));
-    objects.push_back(load_obj({-5, 0, 0}, "../models/Low_Poly_Tree_002.obj"));
-    objects.push_back(load_obj({-2, 0, 0}, "../models/Low_Poly_Tree_003.obj"));
-    objects.push_back(load_obj({ 1, 0, 0}, "../models/Low_Poly_Tree_004.obj"));
-    objects.push_back(load_obj({ 4, 0, 0}, "../models/Low_Poly_Tree_005.obj"));
-    objects.push_back(load_obj({ 7, 0, 0}, "../models/Low_Poly_Tree_006.obj"));
+    setup_map();
 
     g_window_id = glutCreateWindow("OpenGL Elephant");
 

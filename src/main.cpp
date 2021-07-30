@@ -35,11 +35,13 @@ struct Face
 struct Object
 {
     glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
-    float yaw = -90.0f;
-    float pitch = -90.0f;
+    float yaw = 0.0f;
+    float pitch = 0.0f;
     glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
     std::vector<Face> faces = {};
     float speed = 1.0f;
+    float eyes_height = 0.0f;
+    bool is_hidden = false;
 };
 using ObjectPtr = std::shared_ptr<Object>;
 
@@ -207,10 +209,14 @@ ObjectPtr load_obj(const std::string &filename)
 
 static void draw_object(const Object& obj)
 {
+    if (obj.is_hidden)
+        return;
+
 	glPushMatrix();
 	glNormal3d(0, 1, 0);
 
     glTranslatef(obj.pos.x, obj.pos.y, obj.pos.z);
+    glRotatef(-obj.yaw, 0.0f, 1.0, 0.0f);
     glScalef(obj.scale.x, obj.scale.y, obj.scale.z);
     for (size_t i = 0; i < obj.faces.size(); i++)
     {
@@ -252,14 +258,21 @@ static void on_display()
     glLoadIdentity();
     gluPerspective(y_fov, aspect_ratio, z_near, z_far);
 
-    glm::vec3 direction;
-    direction.x = cos(glm::radians(camera->yaw)) * cos(glm::radians(camera->pitch));
-    direction.y = sin(glm::radians(camera->pitch));
-    direction.z = sin(glm::radians(camera->yaw)) * cos(glm::radians(camera->pitch));
+    float yaw = glm::radians(camera->yaw);
+    float pitch = glm::radians(camera->pitch);
 
-    gluLookAt(camera->pos.x, camera->pos.y, camera->pos.z,
+    glm::vec3 direction;
+    direction.x = cos(yaw) * cos(pitch);
+    direction.y = sin(pitch);
+    direction.z = sin(yaw) * cos(pitch);
+
+    float pos_y = camera->pos.y + camera->eyes_height * camera->scale.y;
+
+    gluLookAt(camera->pos.x,
+              pos_y,
+              camera->pos.z,
               camera->pos.x + direction.x,
-              camera->pos.y + direction.y,
+              pos_y         + direction.y,
               camera->pos.z + direction.z,
               up.x, up.y, up.z);
 
@@ -319,10 +332,14 @@ static void on_key_down(unsigned char key, int x, int y)
 
         case ' ':
             if (!spacebar) {
+                camera->is_hidden = false;
+
                 if (camera == free_camera)
                     camera = elephant;
                 else
                     camera = free_camera;
+
+                camera->is_hidden = true;
 
                 glutPostRedisplay();
             }
@@ -367,16 +384,25 @@ static void on_mouse_move(int x, int y)
 
     float fdy = dy * mouse_speed;
     camera->pitch -= fdy * mouse_speed;
-    camera->pitch = glm::clamp(camera->pitch, -90.0f, 90.0f);
+    camera->pitch = glm::clamp(camera->pitch, -89.0f, 89.0f);
+
+    glutPostRedisplay();
 }
 
 static void on_timer(int)
 {
     if (w || s || a || d) {
+        float yaw = glm::radians(camera->yaw);
+        float pitch = glm::radians(camera->pitch);
+
         glm::vec3 direction;
-        direction.x = cos(glm::radians(camera->yaw)) * cos(glm::radians(camera->pitch));
-        direction.y = sin(glm::radians(camera->pitch));
-        direction.z = sin(glm::radians(camera->yaw)) * cos(glm::radians(camera->pitch));
+        direction.x = cos(yaw) * cos(pitch);
+        direction.y = sin(pitch);
+        direction.z = sin(yaw) * cos(pitch);
+
+        if (camera == elephant) {
+            direction.y = 0;
+        }
 
         if (w ^ s) {
             if (w)
@@ -401,16 +427,19 @@ static void on_timer(int)
 void setup_map_spawn(std::mt19937& rng, size_t amount, const std::vector<std::string> &kinds)
 {
     std::uniform_real_distribution<float> location_dis(-FOREST_SIZE, FOREST_SIZE);
+    std::uniform_real_distribution<float> yaw_dis(-180.0f, 180.f);
     std::uniform_int_distribution<size_t> kind_dis(0, kinds.size() - 1);
 
     for (size_t i = 0; i < amount; i++) {
         float x = location_dis(rng);
         float z = location_dis(rng);
+        float yaw = yaw_dis(rng);
         size_t kind_index = kind_dis(rng);
         const std::string &kind = kinds[kind_index];
 
         ObjectPtr object = load_obj(kind);
         object->pos = { x, 0, z };
+        object->yaw = yaw;
         objects.push_back(object);
     }
 
@@ -453,15 +482,17 @@ void setup_map()
     setup_map_spawn(rng, FOREST_AREA / 8, grass_kinds);
 
     elephant = load_obj("../models/Low Poly Elephant.obj");
+    elephant->eyes_height = 1.0f;
     elephant->scale = { 4, 4, 4 };
     objects.push_back(elephant);
 
     free_camera = std::make_shared<Object>();
-    free_camera->pos = { 20, 20, 20 };
-    free_camera->yaw = -45.0f;
-    free_camera->pitch = 45.0f;
+    free_camera->pos = { 8, 8, 8 };
+    free_camera->yaw = -135.0f;
+    free_camera->pitch = -25.0f;
     objects.push_back(free_camera);
 
+    elephant->is_hidden = true;
     camera = elephant;
 }
 

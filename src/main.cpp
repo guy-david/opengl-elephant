@@ -3,62 +3,57 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cmath>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
+#include <glm/glm.hpp>
 
 #define WINDOW_WIDTH 1366
 #define WINDOW_HEIGHT 768
 
-struct vec2
-{
-    float x, y;
-};
-
-struct vec3
-{
-    float x, y, z;
-};
-
-struct vec4
-{
-    float x, y, z, w;
-};
-
-struct Camera {
-    vec3 pos;
-    vec3 target;
-};
-
-static int g_window_id;
-static Camera camera = { { 0, 10, 20 }, { 0, 0, 0 } };
-static GLfloat up[3] = { 0.0f, 1.0f, 0.0f };
-
-static GLfloat ambient_intensity = 1.0f;
-
 struct Material
 {
     float shininess;
-    vec3 ambience;
-    vec3 diffuse;
-    vec3 specular;
-    vec3 emission;
+    glm::vec3 ambience;
+    glm::vec3 diffuse;
+    glm::vec3 specular;
+    glm::vec3 emission;
 };
 
 struct Face
 {
     Material material;
-    std::vector<std::pair<vec3, vec3>> vertices;
+    std::vector<std::pair<glm::vec3, glm::vec3>> vertices;
 };
 
 struct Object
 {
-    vec3 pos;
-    vec3 scale;
-    std::vector<Face> faces;
+    glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
+    float yaw = -90.0f;
+    float pitch = 0.0f;
+    glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
+    std::vector<Face> faces = {};
+    float speed = 1.0f;
 };
 
-std::vector<Object> objects;
+struct Camera : public Object
+{
+
+};
+
+struct Light : public Object
+{
+
+};
+
+static Camera camera = { { { 0, 10, 20 } } };
+static glm::vec3 up = { 0.0f, 1.0f, 0.0f };
+
+static int g_window_id;
+static GLfloat ambient_intensity = 0.5f;
+
+static std::vector<Object> objects;
 
 std::unordered_map<std::string, Material> load_mtl(const std::string &filename)
 {
@@ -117,7 +112,7 @@ std::unordered_map<std::string, Material> load_mtl(const std::string &filename)
     return materials;
 }
 
-Object load_obj(vec3 pos, const std::string &filename)
+Object load_obj(glm::vec3 pos, const std::string &filename)
 {
     std::ifstream in(filename, std::ios::in);
     if (!in)
@@ -133,8 +128,8 @@ Object load_obj(vec3 pos, const std::string &filename)
     obj.pos = pos;
     obj.scale = { 1.0f, 1.0f, 1.0f };
 
-    std::vector<vec3> vertices;
-    std::vector<vec3> normals;
+    std::vector<glm::vec3> vertices;
+    std::vector<glm::vec3> normals;
 
     std::string line;
     while (std::getline(in, line))
@@ -152,7 +147,7 @@ Object load_obj(vec3 pos, const std::string &filename)
         else if (line.substr(0, 2) == "v ")
         {
             std::istringstream s(line.substr(2));
-            vec3 v;
+            glm::vec3 v;
             s >> v.x;
             s >> v.y;
             s >> v.z;
@@ -161,7 +156,7 @@ Object load_obj(vec3 pos, const std::string &filename)
         else if (line.substr(0, 3) == "vn ")
         {
             std::istringstream s(line.substr(3));
-            vec3 v;
+            glm::vec3 v;
             s >> v.x;
             s >> v.y;
             s >> v.z;
@@ -233,12 +228,13 @@ static void draw_object(Object& obj)
 
         for (size_t j = 0; j < face.vertices.size(); j++)
         {
-            const vec3 vertex = face.vertices[j].first;
-            const vec3 normal = face.vertices[j].second;
+            const glm::vec3 vertex = face.vertices[j].first;
+            const glm::vec3 normal = face.vertices[j].second;
 
             glNormal3f(normal.x, normal.y, normal.z);
             glVertex3f(vertex.x, vertex.y, vertex.z);
         }
+
 	    glEnd();
     }
 
@@ -252,20 +248,30 @@ static void on_display()
     constexpr float z_near = 1.0f;
     constexpr float z_far = 90.0f;
 
+    glClearColor(0.2, 0.5, 0.8, 1.0f);
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(y_fov, aspect_ratio, z_near, z_far);
 
+    glm::vec3 direction;
+    direction.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+    direction.y = sin(glm::radians(camera.pitch));
+    direction.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+
     gluLookAt(camera.pos.x, camera.pos.y, camera.pos.z,
-              camera.target.x, camera.target.y, camera.target.z,
-              up[0], up[1], up[2]);
+              camera.pos.x + direction.x,
+              camera.pos.y + direction.y,
+              camera.pos.z + direction.z,
+              up.x, up.y, up.z);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
     glEnable(GL_TEXTURE_2D);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glCullFace(GL_BACK);
+    glEnable(GL_CULL_FACE);
 	glEnable(GL_DEPTH_TEST);
 	glShadeModel(GL_FLAT);
 	glEnable(GL_NORMALIZE);
@@ -297,8 +303,12 @@ static void on_display()
 
     glFlush();
     glutSwapBuffers();
-    glutPostRedisplay();
 }
+
+static int w = 0;
+static int s = 0;
+static int a = 0;
+static int d = 0;
 
 static void on_key_down(unsigned char key, int x, int y)
 {
@@ -309,25 +319,71 @@ static void on_key_down(unsigned char key, int x, int y)
             glutDestroyWindow(g_window_id);
             break;
 
-        case GLUT_KEY_UP:
-        case 'w':
-            camera.pos.x += 0.2f * (camera.target.x - camera.pos.x);
-            camera.pos.y += 0.2f * (camera.target.y - camera.pos.y);
-            camera.pos.z += 0.2f * (camera.target.z - camera.pos.z);
-            break;
-
-        case GLUT_KEY_DOWN:
-        case 's':
-            camera.pos.x -= 0.2f * (camera.target.x - camera.pos.x);
-            camera.pos.y -= 0.2f * (camera.target.y - camera.pos.y);
-            camera.pos.z -= 0.2f * (camera.target.z - camera.pos.z);
-            break;
+        case 'w': w = 1; break;
+        case 's': s = 1; break;
+        case 'a': a = 1; break;
+        case 'd': d = 1; break;
     }
+}
+
+static void on_key_up(unsigned char key, int x, int y)
+{
+    switch (key) {
+        case 'w': w = 0; break;
+        case 's': s = 0; break;
+        case 'a': a = 0; break;
+        case 'd': d = 0; break;
+    }
+}
+
+static void on_mouse_click(int button, int state, int x, int y)
+{
+}
+
+static void on_mouse_move(int x, int y)
+{
+    int dx = (x - WINDOW_WIDTH / 2);
+    int dy = (y - WINDOW_HEIGHT / 2);
+
+    if (dx || dy)
+        glutWarpPointer(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+
+    const float mouse_speed = 0.1f;
+
+    float fdx = dx * mouse_speed;
+    camera.yaw += fdx * mouse_speed;
+
+    float fdy = dy * mouse_speed;
+    camera.pitch -= fdy * mouse_speed;
+    camera.pitch = glm::clamp(camera.pitch, -90.0f, 90.0f);
 }
 
 static void on_timer(int)
 {
+    if (w || s || a || d) {
+        glm::vec3 direction;
+        direction.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+        direction.y = sin(glm::radians(camera.pitch));
+        direction.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
 
+        if (w ^ s) {
+            if (w)
+                camera.pos += direction * 0.2f * camera.speed;
+            if (s)
+                camera.pos -= direction * 0.2f * camera.speed;
+        }
+
+        if (a ^ d) {
+            if (a)
+                camera.pos -= glm::normalize(glm::cross(direction, up)) * 0.2f * camera.speed;
+            if (d)
+                camera.pos += glm::normalize(glm::cross(direction, up)) * 0.2f * camera.speed;
+        }
+
+        glutPostRedisplay();
+    }
+
+    glutTimerFunc(40, on_timer, 0);
 }
 
 int main(int argc, char *argv[])
@@ -362,9 +418,19 @@ int main(int argc, char *argv[])
     objects.push_back(load_obj({ 7, 0, 0}, "../models/Low_Poly_Tree_006.obj"));
 
     g_window_id = glutCreateWindow("OpenGL Elephant");
+
     glutDisplayFunc(on_display);
+
+    glutSetKeyRepeat(GLUT_KEY_REPEAT_OFF);
     glutKeyboardFunc(on_key_down);
-    glutTimerFunc(100, on_timer, 0);
+    glutKeyboardUpFunc(on_key_up);
+
+	glutMouseFunc(on_mouse_click);
+	glutPassiveMotionFunc(on_mouse_move);
+    glutSetCursor(GLUT_CURSOR_NONE);
+    glutWarpPointer(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+
+    glutTimerFunc(40, on_timer, 0);
 
     glutMainLoop();
 

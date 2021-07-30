@@ -291,7 +291,7 @@ static void on_display()
         glEnable(GL_LIGHT0);
         int id = GL_LIGHT0;
         float color[3] = { 1.0f, 1.0f, 1.0f };
-        float position[3] = { 7.0f, 0.0f, 3.0f };
+        float position[3] = { 0.0f, 30.0f, 0.0f };
         float target[3] = { 0.0f, 1.0f, 0.0f };
         glLightfv(id, GL_DIFFUSE, color);
         glLightfv(id, GL_SPECULAR, color);
@@ -300,11 +300,11 @@ static void on_display()
                                 target[1] - position[1],
                                 target[2] - position[2] };
         glLightfv(id, GL_SPOT_DIRECTION, direction);
-        glLightf(id, GL_SPOT_CUTOFF, 120.0f);
-        glLightf(id, GL_SPOT_EXPONENT, 0.0f);
+        glLightf(id, GL_SPOT_CUTOFF, 180.0f);
+        glLightf(id, GL_SPOT_EXPONENT, 3.0f);
     }
 
-    GLfloat globalAmbientVec[4] = { ambient_intensity , ambient_intensity, ambient_intensity, 1.0f };
+    GLfloat globalAmbientVec[4] = { 0, 0, ambient_intensity, 1.0f };
 	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbientVec);
 	glLoadIdentity();
 
@@ -424,22 +424,25 @@ static void on_timer(int)
     glutTimerFunc(40, on_timer, 0);
 }
 
-void setup_map_spawn(std::mt19937& rng, size_t amount, const std::vector<std::string> &kinds)
+void setup_map_spawn(std::mt19937& rng, const std::vector<std::string> &kinds, size_t amount, float max_scale=1.0f, float min_scale=1.0f)
 {
     std::uniform_real_distribution<float> location_dis(-FOREST_SIZE, FOREST_SIZE);
     std::uniform_real_distribution<float> yaw_dis(-180.0f, 180.f);
+    std::uniform_real_distribution<float> scale_dis(min_scale, max_scale);
     std::uniform_int_distribution<size_t> kind_dis(0, kinds.size() - 1);
 
     for (size_t i = 0; i < amount; i++) {
         float x = location_dis(rng);
         float z = location_dis(rng);
         float yaw = yaw_dis(rng);
+        float scale = scale_dis(rng);
         size_t kind_index = kind_dis(rng);
         const std::string &kind = kinds[kind_index];
 
         ObjectPtr object = load_obj(kind);
         object->pos = { x, 0, z };
         object->yaw = yaw;
+        object->scale = { scale, scale, scale };
         objects.push_back(object);
     }
 
@@ -476,10 +479,10 @@ void setup_map()
     };
 
     std::mt19937 rng(1337);
-    setup_map_spawn(rng, FOREST_AREA / 64, tree_kinds);
-    setup_map_spawn(rng, FOREST_AREA / 256, stump_kinds);
-    setup_map_spawn(rng, FOREST_AREA / 32, bush_kinds);
-    setup_map_spawn(rng, FOREST_AREA / 8, grass_kinds);
+    setup_map_spawn(rng, tree_kinds,  FOREST_AREA / 64, 3.0f);
+    setup_map_spawn(rng, stump_kinds, FOREST_AREA / 256, 3.0f);
+    setup_map_spawn(rng, bush_kinds,  FOREST_AREA / 32);
+    setup_map_spawn(rng, grass_kinds, FOREST_AREA / 8, 1.0f, 0.5f);
 
     elephant = load_obj("../models/Low Poly Elephant.obj");
     elephant->eyes_height = 1.0f;

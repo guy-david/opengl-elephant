@@ -1,4 +1,5 @@
 #include <cmath>
+#include <thread>
 #include <vector>
 #include <random>
 #include <unordered_map>
@@ -35,6 +36,7 @@ struct Face
 struct Object
 {
     glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
+    float model_yaw = 0.0f;
     float yaw = 0.0f;
     float pitch = 0.0f;
     glm::vec3 scale = { 1.0f, 1.0f, 1.0f };
@@ -48,11 +50,13 @@ using ObjectPtr = std::shared_ptr<Object>;
 static glm::vec3 up = { 0.0f, 1.0f, 0.0f };
 
 static int g_window_id;
-static GLfloat ambient_intensity = 0.5f;
+static GLfloat ambient_intensity = 0.1f;
 
 static std::vector<ObjectPtr> objects;
 
 static ObjectPtr camera;
+static float camera_back_distance = 10.0f;
+static bool camera_3rd_person = false;
 static ObjectPtr free_camera;
 static ObjectPtr elephant;
 
@@ -213,18 +217,19 @@ static void draw_object(const Object& obj)
         return;
 
 	glPushMatrix();
-	glNormal3d(0, 1, 0);
 
     glTranslatef(obj.pos.x, obj.pos.y, obj.pos.z);
-    glRotatef(-obj.yaw, 0.0f, 1.0, 0.0f);
+    glRotatef(obj.yaw + obj.model_yaw, 0.0f, -1.0f, 0.0f);
     glScalef(obj.scale.x, obj.scale.y, obj.scale.z);
+
     for (size_t i = 0; i < obj.faces.size(); i++)
     {
         glBegin(GL_POLYGON);
 
         const Face& face = obj.faces[i];
 
-	    glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, (const float *)&face.material.diffuse);
+	    glMaterialfv(GL_FRONT, GL_AMBIENT, (const float *)&face.material.ambience);
+	    glMaterialfv(GL_FRONT, GL_DIFFUSE, (const float *)&face.material.diffuse);
         glMaterialfv(GL_FRONT, GL_SPECULAR, (const float *)&face.material.specular);
         glMaterialfv(GL_FRONT, GL_EMISSION, (const float *)&face.material.emission);
         glMaterialf (GL_FRONT, GL_SHININESS, face.material.shininess);
@@ -251,30 +256,45 @@ static void on_display()
     constexpr float z_near = 1.0f;
     constexpr float z_far = 90.0f;
 
-    glClearColor(0.2, 0.5, 0.8, 1.0f);
+    glClearColor(0.2, 0.5, 0.8, 1.0f * ambient_intensity);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(y_fov, aspect_ratio, z_near, z_far);
 
-    float yaw = glm::radians(camera->yaw);
-    float pitch = glm::radians(camera->pitch);
+    float yaw = camera->yaw;
+    float pitch = camera->pitch;
+
+    if (camera_3rd_person)
+        pitch = 0.0f;
+
+    yaw = glm::radians(yaw);
+    pitch = glm::radians(pitch);
 
     glm::vec3 direction;
     direction.x = cos(yaw) * cos(pitch);
     direction.y = sin(pitch);
     direction.z = sin(yaw) * cos(pitch);
 
-    float pos_y = camera->pos.y + camera->eyes_height * camera->scale.y;
+    glm::vec3 pos = camera->pos;
 
-    gluLookAt(camera->pos.x,
-              pos_y,
-              camera->pos.z,
-              camera->pos.x + direction.x,
-              pos_y         + direction.y,
-              camera->pos.z + direction.z,
-              up.x, up.y, up.z);
+    if (!camera_3rd_person) {
+        pos.y += camera->eyes_height * camera->scale.y;
+        gluLookAt(pos.x, pos.y, pos.z,
+                  pos.x + direction.x,
+                  pos.y + direction.y,
+                  pos.z + direction.z,
+                  up.x, up.y, up.z);
+    } else {
+        gluLookAt(pos.x - direction.x * camera_back_distance,
+                  pos.y + camera_back_distance,
+                  pos.z - direction.z * camera_back_distance,
+                  pos.x + direction.x * camera_back_distance,
+                  pos.y + direction.y * camera_back_distance,
+                  pos.z + direction.z * camera_back_distance,
+                  up.x, up.y, up.z);
+    }
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -292,21 +312,47 @@ static void on_display()
         int id = GL_LIGHT0;
         float color[3] = { 1.0f, 1.0f, 1.0f };
         float position[3] = { 0.0f, 30.0f, 0.0f };
-        float target[3] = { 0.0f, 1.0f, 0.0f };
+        float target[3] = { 0.0f, 0.0f, 0.0f };
         glLightfv(id, GL_DIFFUSE, color);
         glLightfv(id, GL_SPECULAR, color);
         glLightfv(id, GL_POSITION, position);
         GLfloat direction[3] = { target[0] - position[0],
-                                target[1] - position[1],
-                                target[2] - position[2] };
+                                 target[1] - position[1],
+                                 target[2] - position[2] };
         glLightfv(id, GL_SPOT_DIRECTION, direction);
         glLightf(id, GL_SPOT_CUTOFF, 180.0f);
         glLightf(id, GL_SPOT_EXPONENT, 3.0f);
     }
 
-    GLfloat globalAmbientVec[4] = { 0, 0, ambient_intensity, 1.0f };
+    {
+        glEnable(GL_LIGHT1);
+        int id = GL_LIGHT1;
+        float color[3] = { 1.0f, 1.0f, 1.0f };
+        float position[3] = { 0.0f, 0.0f, 2.0f };
+        float target[3] = { 0.0f, 1.0f, 0.0f };
+        glLightfv(id, GL_DIFFUSE, color);
+        glLightfv(id, GL_SPECULAR, color);
+        glLightfv(id, GL_POSITION, position);
+        GLfloat direction[3] = { target[0] - position[0],
+                                 target[1] - position[1],
+                                 target[2] - position[2] };
+        glLightfv(id, GL_SPOT_DIRECTION, direction);
+        glLightf(id, GL_SPOT_CUTOFF, 180.0f);
+        glLightf(id, GL_SPOT_EXPONENT, 0.0f);
+    }
+
+    GLfloat globalAmbientVec[4] = { ambient_intensity, ambient_intensity, ambient_intensity, 1.0f };
 	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbientVec);
 	glLoadIdentity();
+
+    {
+        glPushMatrix();
+
+        glTranslatef(-3, 6, 10);
+        glutSolidSphere(3, 100, 100);
+
+        glPopMatrix();
+    };
 
     for (ObjectPtr obj : objects)
         draw_object(*obj);
@@ -332,14 +378,22 @@ static void on_key_down(unsigned char key, int x, int y)
 
         case ' ':
             if (!spacebar) {
-                camera->is_hidden = false;
+                elephant->is_hidden = false;
 
-                if (camera == free_camera)
+                if (camera == free_camera) {
                     camera = elephant;
-                else
+                    camera_3rd_person = true;
+                } else if (camera == elephant && camera_3rd_person) {
+                    elephant->is_hidden = true;
+                    camera = elephant;
+                    camera_3rd_person = false;
+                } else {
+                    free_camera->pos = camera->pos;
+                    free_camera->pos.y += camera->eyes_height * camera->scale.y;
+                    free_camera->yaw = camera->yaw;
+                    free_camera->pitch = camera->pitch;
                     camera = free_camera;
-
-                camera->is_hidden = true;
+                }
 
                 glutPostRedisplay();
             }
@@ -450,9 +504,13 @@ void setup_map_spawn(std::mt19937& rng, const std::vector<std::string> &kinds, s
 
 void setup_map()
 {
-    ObjectPtr floor = load_obj("../models/Floor.obj");
-    floor->scale = { FOREST_SIZE, 0.0f, FOREST_SIZE };
-    objects.push_back(floor);
+    for (int x = -FOREST_SIZE; x < FOREST_SIZE; x++) {
+        for (int z = -FOREST_SIZE; z < FOREST_SIZE; z++) {
+            ObjectPtr floor = load_obj("../models/Floor.obj");
+            floor->pos = { x, 0, z };
+            objects.push_back(floor);
+        }
+    }
 
     std::vector<std::string> tree_kinds = {
         "../models/Low_Poly_Tree_001.obj",
@@ -485,7 +543,8 @@ void setup_map()
     setup_map_spawn(rng, grass_kinds, FOREST_AREA / 8, 1.0f, 0.5f);
 
     elephant = load_obj("../models/Low Poly Elephant.obj");
-    elephant->eyes_height = 1.0f;
+    elephant->model_yaw = -90.f;
+    elephant->eyes_height = 0.8f;
     elephant->scale = { 4, 4, 4 };
     objects.push_back(elephant);
 
@@ -495,11 +554,11 @@ void setup_map()
     free_camera->pitch = -25.0f;
     objects.push_back(free_camera);
 
-    elephant->is_hidden = true;
     camera = elephant;
+    camera_3rd_person = true;
 }
 
-int main(int argc, char *argv[])
+void game_thread(int argc, char *argv[])
 {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH |
@@ -529,6 +588,14 @@ int main(int argc, char *argv[])
     glutTimerFunc(40, on_timer, 0);
 
     glutMainLoop();
+}
+
+int main(int argc, char *argv[])
+{
+    std::thread t1(game_thread, argc, argv);
+    t1.join();
+
+    std::cerr << "Going down..\n";
 
     return 0;
 }

@@ -254,7 +254,7 @@ static void on_display()
     constexpr float y_fov = 75.0f;
     constexpr float aspect_ratio = static_cast<float>(WINDOW_WIDTH) / WINDOW_HEIGHT;
     constexpr float z_near = 1.0f;
-    constexpr float z_far = 90.0f;
+    constexpr float z_far = 200.0f;
 
     glClearColor(0.2, 0.5, 0.8, 1.0f * ambient_intensity);
 
@@ -320,7 +320,7 @@ static void on_display()
                                  target[1] - position[1],
                                  target[2] - position[2] };
         glLightfv(id, GL_SPOT_DIRECTION, direction);
-        glLightf(id, GL_SPOT_CUTOFF, 180.0f);
+        glLightf(id, GL_SPOT_CUTOFF, 90.0f);
         glLightf(id, GL_SPOT_EXPONENT, 3.0f);
     }
 
@@ -328,7 +328,7 @@ static void on_display()
         glEnable(GL_LIGHT1);
         int id = GL_LIGHT1;
         float color[3] = { 1.0f, 1.0f, 1.0f };
-        float position[3] = { 0.0f, 0.0f, 2.0f };
+        float position[3] = { -15.0f, 0.0f, -15.0f };
         float target[3] = { 0.0f, 1.0f, 0.0f };
         glLightfv(id, GL_DIFFUSE, color);
         glLightfv(id, GL_SPECULAR, color);
@@ -349,7 +349,7 @@ static void on_display()
         glPushMatrix();
 
         glTranslatef(-3, 6, 10);
-        glutSolidSphere(3, 100, 100);
+        glutSolidSphere(3, 300, 300);
 
         glPopMatrix();
     };
@@ -504,11 +504,15 @@ void setup_map_spawn(std::mt19937& rng, const std::vector<std::string> &kinds, s
 
 void setup_map()
 {
-    for (int x = -FOREST_SIZE; x < FOREST_SIZE; x++) {
-        for (int z = -FOREST_SIZE; z < FOREST_SIZE; z++) {
-            ObjectPtr floor = load_obj("../models/Floor.obj");
-            floor->pos = { x, 0, z };
-            objects.push_back(floor);
+    {
+        int scale = 3;
+        for (int x = -FOREST_SIZE; x < FOREST_SIZE; x += scale) {
+            for (int z = -FOREST_SIZE; z < FOREST_SIZE; z += scale) {
+                ObjectPtr floor = load_obj("../models/Floor.obj");
+                floor->pos = { x, 0, z };
+                floor->scale = { scale / 2.0f, 1.0f, scale / 2.0f };
+                objects.push_back(floor);
+            }
         }
     }
 

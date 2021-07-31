@@ -597,9 +597,41 @@ void game_thread(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
     std::thread t1(game_thread, argc, argv);
-    t1.join();
 
-    std::cerr << "Going down..\n";
+    std::cout << "***************" << std::endl;
+    std::cout << "OpenGL Elephant" << std::endl;
+    std::cout << "***************" << std::endl;
+
+    std::cout << std::endl;
+    std::cout << "Type help to view the available commands." << std::endl;
+
+    while (true) {
+        std::cout << "\r> " << std::flush;
+
+        std::string command;
+        std::getline(std::cin, command);
+
+        if (command == "help") {
+            std::cout << "Available commands:" << std::endl;
+            std::cout << "  help: view this list" << std::endl;
+            std::cout << "  ambience: set the ambient intensity" << std::endl;
+            std::cout << "  quit: exit the application" << std::endl;
+        }
+
+        else if (command == "ambience") {
+            std::cout << "choose a value between 0-1: " << std::flush;
+            std::cin >> ambient_intensity;
+
+            glutPostRedisplay();
+        }
+
+        else if (command == "quit") {
+            glutDestroyWindow(g_window_id);
+            break;
+        }
+    }
+
+    t1.join();
 
     return 0;
 }

@@ -366,6 +366,8 @@ static int s = 0;
 static int a = 0;
 static int d = 0;
 static int spacebar = 0;
+static int up_arrow = 0;
+static int down_arrow = 0;
 
 static void on_key_down(unsigned char key, int x, int y)
 {
@@ -419,6 +421,22 @@ static void on_key_up(unsigned char key, int x, int y)
     }
 }
 
+static void on_special_key_down(int key, int x, int y)
+{
+    switch (key) {
+        case GLUT_KEY_UP: up_arrow = 1; break;
+        case GLUT_KEY_DOWN: down_arrow = 1; break;
+    }
+}
+
+static void on_special_key_up(int key, int x, int y)
+{
+    switch (key) {
+        case GLUT_KEY_UP: up_arrow = 0; break;
+        case GLUT_KEY_DOWN: down_arrow = 0; break;
+    }
+}
+
 static void on_mouse_click(int button, int state, int x, int y)
 {
 }
@@ -445,37 +463,41 @@ static void on_mouse_move(int x, int y)
 
 static void on_timer(int)
 {
-    if (w || s || a || d) {
-        float yaw = glm::radians(camera->yaw);
-        float pitch = glm::radians(camera->pitch);
+    glutTimerFunc(40, on_timer, 0);
 
-        glm::vec3 direction;
-        direction.x = cos(yaw) * cos(pitch);
-        direction.y = sin(pitch);
-        direction.z = sin(yaw) * cos(pitch);
+    float yaw = glm::radians(camera->yaw);
+    float pitch = glm::radians(camera->pitch);
 
-        if (camera == elephant) {
-            direction.y = 0;
-        }
+    glm::vec3 direction;
+    direction.x = cos(yaw) * cos(pitch);
+    direction.y = sin(pitch);
+    direction.z = sin(yaw) * cos(pitch);
 
-        if (w ^ s) {
-            if (w)
-                camera->pos += direction * 0.2f * camera->speed;
-            if (s)
-                camera->pos -= direction * 0.2f * camera->speed;
-        }
+    if (camera == elephant)
+        direction.y = 0;
 
-        if (a ^ d) {
-            if (a)
-                camera->pos -= glm::normalize(glm::cross(direction, up)) * 0.2f * camera->speed;
-            if (d)
-                camera->pos += glm::normalize(glm::cross(direction, up)) * 0.2f * camera->speed;
-        }
-
-        glutPostRedisplay();
+    if (w ^ s) {
+        if (w)
+            camera->pos += direction * 0.2f * camera->speed;
+        if (s)
+            camera->pos -= direction * 0.2f * camera->speed;
     }
 
-    glutTimerFunc(40, on_timer, 0);
+    if (a ^ d) {
+        if (a)
+            camera->pos -= glm::normalize(glm::cross(direction, up)) * 0.2f * camera->speed;
+        if (d)
+            camera->pos += glm::normalize(glm::cross(direction, up)) * 0.2f * camera->speed;
+    }
+
+    if (up_arrow ^ down_arrow) {
+        if (up_arrow)
+            ambient_intensity = glm::clamp(ambient_intensity + 0.01, 0.0, 1.0);
+        if (down_arrow)
+            ambient_intensity = glm::clamp(ambient_intensity - 0.01, 0.0, 1.0);
+    }
+
+    glutPostRedisplay();
 }
 
 void setup_map_spawn(std::mt19937& rng, const std::vector<std::string> &kinds, size_t amount, float max_scale=1.0f, float min_scale=1.0f)
@@ -583,6 +605,8 @@ void game_thread(int argc, char *argv[])
     glutSetKeyRepeat(GLUT_KEY_REPEAT_OFF);
     glutKeyboardFunc(on_key_down);
     glutKeyboardUpFunc(on_key_up);
+    glutSpecialFunc(on_special_key_down);
+    glutSpecialUpFunc(on_special_key_up);
 
 	glutMouseFunc(on_mouse_click);
 	glutPassiveMotionFunc(on_mouse_move);
@@ -602,6 +626,11 @@ int main(int argc, char *argv[])
     std::cout << "OpenGL Elephant" << std::endl;
     std::cout << "***************" << std::endl;
 
+    std::cout << "Move using W, A, S, D." << std::endl;
+    std::cout << "Switch between third person, first person and free view by pressing SPACE." << std::endl;
+    std::cout << "Press the UP/DOWN arrows to increase/decrease the ambient intensity." << std::endl;
+    std::cout << "Press ESC to quit the application." << std::endl;
+
     std::cout << std::endl;
     std::cout << "Type help to view the available commands." << std::endl;
 
@@ -614,15 +643,7 @@ int main(int argc, char *argv[])
         if (command == "help") {
             std::cout << "Available commands:" << std::endl;
             std::cout << "  help: view this list" << std::endl;
-            std::cout << "  ambience: set the ambient intensity" << std::endl;
             std::cout << "  quit: exit the application" << std::endl;
-        }
-
-        else if (command == "ambience") {
-            std::cout << "choose a value between 0-1: " << std::flush;
-            std::cin >> ambient_intensity;
-
-            glutPostRedisplay();
         }
 
         else if (command == "quit") {

@@ -10,3 +10,5 @@ cmake --build .
 
 ## Run
 ./elephant
+
+![Alt](opengl-elephant.png?raw=true "OpenGL Elephant")
